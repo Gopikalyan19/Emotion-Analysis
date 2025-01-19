@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion Analyzer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --bg: #f8fafc;
+            --text: #1e293b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 1rem;
+        }
+
+        h1 {
+            font-size: 1.875rem;
+            font-weight: 600;
+            margin-bottom: 2rem;
+            text-align: center;
+            color: var(--text);
+        }
+
+        .input-section {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            margin-bottom: 1.5rem;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 0.75rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            resize: vertical;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            transition: border-color 0.15s ease;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .controls {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        button {
+            padding: 0.625rem 1.25rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .primary-button {
+            background: var(--primary);
+            color: white;
+        }
+
+        .primary-button:hover {
+            background: var(--primary-dark);
+        }
+
+        .secondary-button {
+            background: #e2e8f0;
+            color: var(--text);
+        }
+
+        .secondary-button:hover {
+            background: #cbd5e1;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .emotion-card {
+            background: white;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+        }
+
+        .emotion-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .emotion-icon {
+            font-size: 1.5rem;
+        }
+
+        .confidence-bar {
+            height: 6px;
+            background: #f1f5f9;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+        }
+
+        .confidence-level {
+            height: 100%;
+            background: var(--primary);
+            width: 0;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .chart-container {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            height: 400px;
+        }
+
+        .loading {
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 640px) {
+            .container {
+                margin: 1rem auto;
+                padding: 0.75rem;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+
+            .chart-container {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="loading" id="loadingIndicator">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <div class="container">
+        <h1>Emotion Analyzer</h1>
+        
+        <div class="input-section">
+            <textarea id="textInput" 
+                      placeholder="Enter your text here (minimum 3 words)..."
+                      aria-label="Text input for emotion analysis"></textarea>
+            
+            <div class="controls">
+                <button class="primary-button" id="analyzeButton" onclick="analyzeText()">
+                    Analyze Emotions
+                </button>
+                <button class="secondary-button" onclick="clearText()">
+                    Clear
+                </button>
+            </div>
+        </div>
+
+        <div class="results-grid" id="resultsGrid"></div>
+
+        <div class="chart-container">
+            <canvas id="emotionChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const emotions = [
+            { name: 'Joy', icon: '😊', keywords: ['happy', 'joy', 'delighted', 'great', 'excellent', 'good', 'wonderful', 'amazing', 'love', 'smile', 'pleased', 'excited', 'cheerful', 'blessed', 'grateful'] },
+            { name: 'Sadness', icon: '😢', keywords: ['sad', 'unhappy', 'depressed', 'miserable', 'terrible', 'sorry', 'lost', 'cry', 'disappointed', 'heartbroken', 'grief', 'lonely', 'hopeless', 'down'] },
+            { name: 'Anger', icon: '😠', keywords: ['angry', 'mad', 'furious', 'irritated', 'annoyed', 'hate', 'rage', 'frustrated', 'upset', 'outraged', 'bitter', 'hostile', 'enraged'] },
+            { name: 'Fear', icon: '😨', keywords: ['afraid', 'scared', 'frightened', 'worried', 'terrified', 'nervous', 'anxious', 'panic', 'stressed', 'concerned', 'uneasy', 'dread', 'horror'] },
+            { name: 'Surprise', icon: '😮', keywords: ['surprised', 'shocked', 'amazed', 'unexpected', 'wow', 'astonished', 'incredible', 'startled', 'stunned', 'speechless', 'bewildered'] },
+            { name: 'Neutral', icon: '😐', keywords: ['okay', 'fine', 'normal', 'average', 'usual', 'typical', 'regular', 'moderate', 'standard', 'common', 'ordinary'] }
+        ];
+
+        let chart;
+
+        function initChart() {
+            const ctx = document.getElementById('emotionChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: emotions.map(e => e.name),
+                    datasets: [{
+                        label: 'Emotion Intensity',
+                        data: emotions.map(() => 0),
+                        backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                        borderColor: 'rgba(99, 102, 241, 0.8)',
+                        pointBackgroundColor: 'rgba(99, 102, 241, 1)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgba(99, 102, 241, 1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                stepSize: 20
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            },
+                            angleLines: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChart(results) {
+            chart.data.datasets[0].data = results.map(r => r.confidence);
+            chart.update();
+        }
+
+        function preprocessText(text) {
+            return text.toLowerCase()
+                      .replace(/[^\w\s]/gi, ' ')
+                      .replace(/\s+/g, ' ')
+                      .trim();
+        }
+
+        function classifyEmotions(text) {
+            const words = text.split(' ');
+            const scores = Object.fromEntries(emotions.map(e => [e.name.toLowerCase(), 0]));
+            let totalMatches = 0;
+
+            words.forEach(word => {
+                emotions.forEach(emotion => {
+                    if (emotion.keywords.includes(word)) {
+                        scores[emotion.name.toLowerCase()]++;
+                        totalMatches++;
+                    }
+                });
+            });
+
+            // If no emotions detected, increase neutral score
+            if (totalMatches === 0) {
+                scores.neutral = 1;
+                totalMatches = 1;
+            }
+
+            // Convert to percentages
+            Object.keys(scores).forEach(emotion => {
+                scores[emotion] = (scores[emotion] / totalMatches) * 100;
+            });
+
+            return emotions.map(emotion => ({
+                ...emotion,
+                confidence: scores[emotion.name.toLowerCase()]
+            }));
+        }
+
+        async function analyzeText() {
+            const textInput = document.getElementById('textInput');
+            const analyzeButton = document.getElementById('analyzeButton');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const text = textInput.value.trim();
+
+            if (text.split(/\s+/).length < 3) {
+                alert('Please enter at least 3 words for analysis');
+                return;
+            }
+
+            try {
+                analyzeButton.disabled = true;
+                loadingIndicator.style.display = 'flex';
+
+                const processedText = preprocessText(text);
+                const results = classifyEmotions(processedText);
+
+                displayResults(results);
+                updateChart(results);
+
+            } catch (error) {
+                console.error('Analysis error:', error);
+                alert('An error occurred during analysis. Please try again.');
+            } finally {
+                analyzeButton.disabled = false;
+                loadingIndicator.style.display = 'none';
+            }
+        }
+
+        function displayResults(results) {
+            const resultsGrid = document.getElementById('resultsGrid');
+            resultsGrid.innerHTML = results.map(result => `
+                <div class="emotion-card">
+                    <div class="emotion-header">
+                        <span class="emotion-icon">${result.icon}</span>
+                        <span>${result.name}</span>
+                    </div>
+                    <div class="confidence-bar">
+                        <div class="confidence-level" style="width: ${result.confidence}%"></div>
+                    </div>
+                    <div>${result.confidence.toFixed(1)}%</div>
+                </div>
+            `).join('');
+        }
+
+        function clearText() {
+            document.getElementById('textInput').value = '';
+            document.getElementById('resultsGrid').innerHTML = '';
+            updateChart(emotions.map(() => ({ confidence: 0 })));
+        }
+
+        document.addEventListener('DOMContentLoaded', initChart);
+    </script>
+</body>
+</html>

@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multilingual Emotion Analyzer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --bg: #f8fafc;
+            --text: #1e293b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 1rem;
+        }
+
+        h1 {
+            font-size: 1.875rem;
+            font-weight: 600;
+            margin-bottom: 2rem;
+            text-align: center;
+            color: var(--text);
+        }
+
+        .input-section {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            margin-bottom: 1.5rem;
+        }
+
+        .language-selector {
+            margin-bottom: 1rem;
+        }
+
+        select {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 0.75rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            resize: vertical;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            transition: border-color 0.15s ease;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .controls {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        button {
+            padding: 0.625rem 1.25rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .primary-button {
+            background: var(--primary);
+            color: white;
+        }
+
+        .primary-button:hover {
+            background: var(--primary-dark);
+        }
+
+        .secondary-button {
+            background: #e2e8f0;
+            color: var(--text);
+        }
+
+        .secondary-button:hover {
+            background: #cbd5e1;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .detected-language {
+            font-size: 0.875rem;
+            color: #64748b;
+            margin-bottom: 1rem;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .emotion-card {
+            background: white;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+        }
+
+        .emotion-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .emotion-icon {
+            font-size: 1.5rem;
+        }
+
+        .confidence-bar {
+            height: 6px;
+            background: #f1f5f9;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+        }
+
+        .confidence-level {
+            height: 100%;
+            background: var(--primary);
+            width: 0;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .chart-container {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            height: 400px;
+        }
+
+        .loading {
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 640px) {
+            .container {
+                margin: 1rem auto;
+                padding: 0.75rem;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+
+            .chart-container {
+                height: 300px;
+            }
+        }
+    </style>
+    <style>
+         .back-button {
+            position: fixed;
+            top: 1.5rem;
+            left: 1.5rem;
+            background: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            font-size: 0.9rem;
+            color: var(--text-dark);
+            z-index: 100;
+        }
+
+        .back-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .back-arrow {
+            font-size: 1.2rem;
+        }
+        @media (max-width: 768px) {
+            .back-button {
+                top: 1rem;
+                left: 1rem;
+                padding: 0.4rem 0.8rem;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <a href="index.html" style="text-decoration: none;" class="back-button">
+        <span class="back-arrow">←</span>
+        Back
+    </a>
+    <br> <br>
+
+    <div class="loading" id="loadingIndicator">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <div class="container">
+        <h1>Multilingual Emotion Analyzer</h1>
+        
+        <div class="input-section">
+            <div class="language-selector">
+                <select id="languageSelect" onchange="updatePlaceholder()">
+                    <option value="auto">Auto Detect Language</option>
+                    <option value="en">English</option>
+                    <option value="es">Español</option>
+                    <option value="fr">Français</option>
+                    <option value="te">తెలుగు</option>
+                    <option value="hi">हिंदी</option>
+                    <option value="ta">தமிழ்</option>
+                    <option value="ko">한국어</option>
+                    <option value="ja">日本語</option>
+                    <option value="zh">中文</option>
+
+                </select>
+            </div>
+            
+            <div id="detectedLanguage" class="detected-language"></div>
+            
+            <textarea id="textInput" 
+                      placeholder="Enter your text here (minimum 3 words)..."
+                      aria-label="Text input for emotion analysis"></textarea>
+            
+            <div class="controls">
+                <button class="primary-button" id="analyzeButton" onclick="analyzeText()">
+                    Analyze Emotions
+                </button>
+                <button class="secondary-button" onclick="clearText()">
+                    Clear
+                </button>
+            </div>
+        </div>
+
+        <div class="results-grid" id="resultsGrid"></div>
+
+        <div class="chart-container">
+            <canvas id="emotionChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const emotionKeywords = {
+            en: {
+                joy: ['happy', 'joy', 'delighted', 'great', 'excellent', 'good', 'wonderful', 'amazing', 'love', 'smile', 'pleased', 'excited', 'cheerful', 'blessed', 'grateful'],
+                sadness: ['sad', 'unhappy', 'depressed', 'miserable', 'terrible', 'sorry', 'lost', 'cry', 'disappointed', 'heartbroken', 'grief', 'lonely', 'hopeless', 'down'],
+                anger: ['angry', 'mad', 'furious', 'irritated', 'annoyed', 'hate', 'rage', 'frustrated', 'upset', 'outraged', 'bitter', 'hostile', 'enraged'],
+                fear: ['afraid', 'scared', 'frightened', 'worried', 'terrified', 'nervous', 'anxious', 'panic', 'stressed', 'concerned', 'uneasy', 'dread', 'horror'],
+                surprise: ['surprised', 'shocked', 'amazed', 'unexpected', 'wow', 'astonished', 'incredible', 'startled', 'stunned', 'speechless', 'bewildered'],
+                neutral: ['okay', 'fine', 'normal', 'average', 'usual', 'typical', 'regular', 'moderate', 'standard', 'common', 'ordinary']
+            },
+            es: {
+                joy: ['feliz', 'alegre', 'contento', 'encantado', 'dichoso', 'radiante', 'maravilloso', 'genial', 'amor', 'sonrisa'],
+                sadness: ['triste', 'infeliz', 'deprimido', 'miserable', 'terrible', 'perdido', 'llorar', 'decepcionado'],
+                anger: ['enfadado', 'enojado', 'furioso', 'irritado', 'molesto', 'odio', 'rabia', 'frustrado'],
+                fear: ['asustado', 'temeroso', 'preocupado', 'aterrado', 'nervioso', 'ansioso', 'pánico'],
+                surprise: ['sorprendido', 'asombrado', 'impresionado', 'inesperado', 'increíble', 'atónito'],
+                neutral: ['bien', 'normal', 'común', 'típico', 'regular', 'moderado', 'estándar']
+            },
+            fr: {
+                joy: ['heureux', 'joyeux', 'content', 'ravi', 'excellent', 'merveilleux', 'amour', 'sourire'],
+                sadness: ['triste', 'malheureux', 'déprimé', 'misérable', 'terrible', 'perdu', 'pleurer'],
+                anger: ['fâché', 'en colère', 'furieux', 'irrité', 'agacé', 'haine', 'rage', 'frustré'],
+                fear: ['effrayé', 'apeuré', 'inquiet', 'terrifié', 'nerveux', 'anxieux', 'panique'],
+                surprise: ['surpris', 'choqué', 'étonné', 'inattendu', 'incroyable', 'stupéfait'],
+                neutral: ['bien', 'normal', 'moyen', 'habituel', 'typique', 'régulier', 'modéré']
+            },
+            te: { // Telugu
+                joy: ['సంతోషం', 'ఆనందం', 'హర్షం', 'ఉల్లాసం', 'ముద్దు', 'ప్రేమ', 'నవ్వు', 'ఆహ్లాదం', 'సుఖం', 'పులకింత'],
+                sadness: ['దుఃఖం', 'బాధ', 'విచారం', 'కన్నీరు', 'వేదన', 'కష్టం', 'నిరాశ', 'నొప్పి', 'శోకం'],
+                anger: ['కోపం', 'రౌద్రం', 'ఆగ్రహం', 'క్రోధం', 'చిరాకు', 'అసహనం', 'ఆవేశం', 'దేష్వం'],
+                fear: ['భయం', 'హడల్', 'దడ', 'అంజి', 'వణుకు', 'ఆందోళన', 'టెన్షన్', 'గాబరా'],
+                surprise: ['ఆశ్చర్యం', 'షాక్', 'ఆశ్చర్యచకితం', 'విస్మయం', 'అదుర్స్', 'ఆశ్చర్యపడటం'],
+                neutral: ['సాధారణం', 'మామూలు', 'సామాన్యం', 'చక్కగా', 'బాగున్నది', 'సరే', 'ఓకే']
+            },
+
+            hi: { // Hindi
+                joy: ['खुश', 'आनंद', 'प्रसन्न', 'हर्षित', 'मुस्कान', 'प्यार', 'सुखी', 'उल्लसित', 'प्रफुल्लित', 'मगन'],
+                sadness: ['दुःख', 'उदास', 'दर्द', 'रोना', 'पीड़ा', 'विषाद', 'मायूस', 'निराश', 'व्यथित'],
+                anger: ['गुस्सा', 'क्रोध', 'रोष', 'आक्रोश', 'नाराज़', 'चिढ़', 'कुपित', 'खीझ'],
+                fear: ['डर', 'भय', 'खौफ', 'दहशत', 'घबराहट', 'चिंता', 'आशंका', 'सहम'],
+                surprise: ['आश्चर्य', 'हैरान', 'चकित', 'विस्मित', 'अचंभित', 'स्तब्ध', 'चौंका'],
+                neutral: ['सामान्य', 'ठीक', 'साधारण', 'मध्यम', 'नियमित', 'औसत']
+            },
+
+            ta: { // Tamil
+                joy: ['மகிழ்ச்சி', 'சந்தோஷம்', 'இன்பம்', 'ஆனந்தம்', 'நன்று', 'அன்பு', 'புன்னகை', 'களிப்பு'],
+                sadness: ['சோகம்', 'துக்கம்', 'துயரம்', 'வருத்தம்', 'கண்ணீர்', 'வேதனை', 'விசனம்'],
+                anger: ['கோபம்', 'சினம்', 'ஆத்திரம்', 'எரிச்சல்', 'வெறுப்பு', 'சீற்றம்', 'அருவருப்பு'],
+                fear: ['பயம்', 'அச்சம்', 'திகில்', 'பீதி', 'கவலை', 'பதற்றம்', 'கலக்கம்'],
+                surprise: ['ஆச்சரியம்', 'வியப்பு', 'திகைப்பு', 'அதிர்ச்சி', 'பிரமிப்பு', 'திடுக்கிடல்'],
+                neutral: ['சாதாரண', 'வழக்கமான', 'சரி', 'நடுநிலை', 'பொதுவான', 'சுமார்']
+            },
+
+            ko: { // Korean
+                joy: ['행복', '기쁨', '즐거움', '사랑', '웃음', '좋아', '신남', '기뻐', '흐뭇', '환희'],
+                sadness: ['슬픔', '우울', '눈물', '아픔', '괴로움', '서글픔', '비통', '상심', '애통'],
+                anger: ['화남', '분노', '짜증', '격분', '성나다', '흥분', '노여움', '격노'],
+                fear: ['두려움', '무서움', '불안', '공포', '걱정', '겁', '조마조마', '긴장'],
+                surprise: ['놀람', '충격', '깜짝', '경악', '당황', '기절초풍', '경이'],
+                neutral: ['보통', '일반', '평범', '무난', '적당', '평상', '보편']
+            },
+
+            ja: { // Japanese
+                joy: ['嬉しい', '幸せ', '楽しい', '喜び', '愛', '笑顔', '幸福', '最高', '素晴らしい'],
+                sadness: ['悲しい', '切ない', '寂しい', '辛い', '苦しい', '涙', '悲痛', '失望'],
+                anger: ['怒り', '腹立つ', 'イライラ', '激怒', '憤り', '不機嫌', '憎い', '苛立ち'],
+                fear: ['怖い', '恐れ', '不安', '心配', 'ビクビク', '恐怖', 'ドキドキ', '緊張'],
+                surprise: ['驚き', 'ビックリ', '衝撃', '仰天', '意外', '唖然', '愕然'],
+                neutral: ['普通', '通常', '一般', '平凡', '標準', '平常', 'まあまあ']
+            },
+
+            zh: { // Chinese (Simplified)
+                joy: ['开心', '快乐', '高兴', '幸福', '欢喜', '愉快', '欢乐', '喜悦', '欣慰', '满意'],
+                sadness: ['伤心', '难过', '悲伤', '痛苦', '忧愁', '悲痛', '沮丧', '哀伤', '苦闷'],
+                anger: ['生气', '愤怒', '恼火', '气愤', '暴怒', '火大', '恼怒', '发火'],
+                fear: ['害怕', '恐惧', '担心', '惊恐', '忧虑', '惶恐', '紧张', '惊慌'],
+                surprise: ['惊讶', '震惊', '吃惊', '意外', '诧异', '愕然', '惊奇'],
+                neutral: ['一般', '普通', '正常', '平常', '一般般', '还好', '适中']
+            },
+            // Add more languages as needed
+        };
+
+        const placeholderTexts = {
+            en: "Enter your text here (minimum 3 words)...",
+            es: "Ingrese su texto aquí (mínimo 3 palabras)...",
+            fr: "Entrez votre texte ici (minimum 3 mots)...",
+            de: "Geben Sie Ihren Text hier ein (mindestens 3 Wörter)...",
+            it: "Inserisci il tuo testo qui (minimo 3 parole)...",
+            pt: "Digite seu texto aqui (mínimo 3 palavras)...",
+            nl: "Voer hier uw tekst in (minimaal 3 woorden)...",
+            ru: "Введите текст здесь (минимум 3 слова)...",
+            te: "మీ టెక్స్ట్‌ని ఇక్కడ నమోదు చేయండి (కనీసం 3 పదాలు)...",
+            hi: "अपना टेक्स्ट यहां लिखें (कम से कम 3 शब्द)...",
+            ta: "உங்கள் உரையை இங்கே உள்ளிடவும் (குறைந்தது 3 சொற்கள்)...",
+            ko: "텍스트를 여기에 입력하세요 (최소 3단어)...",
+            ja: "テキストをここに入力してください（最低3語）...",
+            zh: "在此输入文字（至少3个词）...",
+        };
+
+        const emotions = [
+            { name: 'Joy', icon: '😊' },
+            { name: 'Sadness', icon: '😢' },
+            { name: 'Anger', icon: '😠' },
+            { name: 'Fear', icon: '😨' },
+            { name: 'Surprise', icon: '😮' },
+            { name: 'Neutral', icon: '😐' }
+        ];
+
+        let chart;
+
+        function detectLanguage(text) {
+            const selectedLanguage = document.getElementById('languageSelect').value;
+            if (selectedLanguage !== 'auto') {
+                return selectedLanguage;
+            }
+
+            // Simple language detection based on character sets and common words
+            const langPatterns = {
+                zh: /[\u4E00-\u9FFF]/,
+                ja: /[\u3040-\u309F\u30A0-\u30FF]/,
+                ko: /[\u3130-\u318F\uAC00-\uD7AF]/,
+                ru: /[\u0400-\u04FF]/,
+                // Add more patterns as needed
+            };
+
+            for (const [lang, pattern] of Object.entries(langPatterns)) {
+                if (pattern.test(text)) {
+                    return lang;
+                }
+            }
+
+            // Default to English if no specific pattern is matched
+            return 'en';
+        }
+
+        function updatePlaceholder() {
+            const select = document.getElementById('languageSelect');
+            const textarea = document.getElementById('textInput');
+            const lang = select.value;
+            
+            if (lang !== 'auto') {
+                textarea.placeholder = placeholderTexts[lang] || placeholderTexts.en;
+            } else {
+                textarea.placeholder = placeholderTexts.en;
+            }
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('emotionChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: emotions.map(e => e.name),
+                    datasets: [{
+                        label: 'Emotion Intensity',
+                        data: emotions.map(() => 0),
+                        backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                        borderColor: 'rgba(99, 102, 241, 0.8)',
+                        pointBackgroundColor: 'rgba(99, 102, 241, 1)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgba(99, 102, 241, 1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                stepSize: 20
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            },
+                            angleLines: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChart(results) {
+            chart.data.datasets[0].data = results.map(r => r.confidence);
+            chart.update();
+        }
+
+        function preprocessText(text) {
+            return text.toLowerCase()
+                      .replace(/[^\w\s\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\u3130-\u318F\uAC00-\uD7AF\u0400-\u04FF]/gi, ' ')
+                      .replace(/\s+/g, ' ')
+                      .trim();
+        }
+
+        function classifyEmotions(text, language) {
+            const words = text.split(' ');
+            const keywords = emotionKeywords[language] || emotionKeywords.en;
+            const scores = Object.fromEntries(emotions.map(e => [e.name.toLowerCase(), 0]));
+            let totalMatches = 0;
+
+            words.forEach(word => {
+                Object.entries(keywords).forEach(([emotion, emotionWords]) => {
+                    if (emotionWords.includes(word)) {
+                        scores[emotion]++;
+                        totalMatches++;
+                    }
+                });
+            });
+
+            // If no emotions detected, increase neutral score
+            if (totalMatches === 0) {
+                scores.neutral = 1;
+                totalMatches = 1;
+            }
+
+            // Convert to percentages
+            Object.keys(scores).forEach(emotion => {
+                scores[emotion] = (scores[emotion] / totalMatches) * 100;
+            });
+
+            return emotions.map(emotion => ({
+                ...emotion,
+                confidence: scores[emotion.name.toLowerCase()]
+            }));
+        }
+
+        const emotionNames = {
+            en: {
+                Joy: 'Joy',
+                Sadness: 'Sadness',
+                Anger: 'Anger',
+                Fear: 'Fear',
+                Surprise: 'Surprise',
+                Neutral: 'Neutral'
+            },
+            es: {
+                Joy: 'Alegría',
+                Sadness: 'Tristeza',
+                Anger: 'Enojo',
+                Fear: 'Miedo',
+                Surprise: 'Sorpresa',
+                Neutral: 'Neutral'
+            },
+            fr: {
+                Joy: 'Joie',
+                Sadness: 'Tristesse',
+                Anger: 'Colère',
+                Fear: 'Peur',
+                Surprise: 'Surprise',
+                Neutral: 'Neutre'
+            },
+            te: { // Telugu
+                Joy: 'సంతోషం',
+                Sadness: 'దుఃఖం',
+                Anger: 'కోపం',
+                Fear: 'భయం',
+                Surprise: 'ఆశ్చర్యం',
+                Neutral: 'సాధారణం'
+            },
+            hi: { // Hindi
+                Joy: 'खुशी',
+                Sadness: 'दुःख',
+                Anger: 'क्रोध',
+                Fear: 'भय',
+                Surprise: 'आश्चर्य',
+                Neutral: 'सामान्य'
+            },
+            ta: { // Tamil
+                Joy: 'மகிழ்ச்சி',
+                Sadness: 'சோகம்',
+                Anger: 'கோபம்',
+                Fear: 'பயம்',
+                Surprise: 'ஆச்சரியம்',
+                Neutral: 'சாதாரண'
+            },
+            ko: { // Korean
+                Joy: '기쁨',
+                Sadness: '슬픔',
+                Anger: '분노',
+                Fear: '두려움',
+                Surprise: '놀람',
+                Neutral: '보통'
+            },
+            ja: { // Japanese
+                Joy: '喜び',
+                Sadness: '悲しみ',
+                Anger: '怒り',
+                Fear: '恐れ',
+                Surprise: '驚き',
+                Neutral: '普通'
+            },
+            zh: { // Chinese
+                Joy: '快乐',
+                Sadness: '悲伤',
+                Anger: '愤怒',
+                Fear: '恐惧',
+                Surprise: '惊讶',
+                Neutral: '普通'
+            }
+
+            // Add more languages as needed
+        };
+
+        async function analyzeText() {
+            const textInput = document.getElementById('textInput');
+            const analyzeButton = document.getElementById('analyzeButton');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const detectedLanguageDiv = document.getElementById('detectedLanguage');
+            const text = textInput.value.trim();
+
+            if (text.split(/\s+/).length < 3) {
+                alert('Please enter at least 3 words for analysis');
+                return;
+            }
+
+            try {
+                analyzeButton.disabled = true;
+                loadingIndicator.style.display = 'flex';
+
+                const processedText = preprocessText(text);
+                const detectedLang = detectLanguage(processedText);
+                const results = classifyEmotions(processedText, detectedLang);
+
+                // Update detected language display
+                const langNames = {
+                    en: 'English',
+                    es: 'Spanish',
+                    fr: 'French',
+                    de: 'German',
+                    it: 'Italian',
+                    pt: 'Portuguese',
+                    nl: 'Dutch',
+                    ru: 'Russian',
+                    zh: 'Chinese',
+                    ja: 'Japanese',
+                    ko: 'Korean'
+                };
+                detectedLanguageDiv.textContent = `Detected Language: ${langNames[detectedLang] || detectedLang}`;
+
+                // Update chart labels with translated emotion names
+                const translatedEmotions = emotionNames[detectedLang] || emotionNames.en;
+                chart.data.labels = emotions.map(e => translatedEmotions[e.name] || e.name);
+                
+                displayResults(results, detectedLang);
+                updateChart(results);
+
+            } catch (error) {
+                console.error('Analysis error:', error);
+                alert('An error occurred during analysis. Please try again.');
+            } finally {
+                analyzeButton.disabled = false;
+                loadingIndicator.style.display = 'none';
+            }
+        }
+
+        function displayResults(results, language) {
+            const resultsGrid = document.getElementById('resultsGrid');
+            const translatedEmotions = emotionNames[language] || emotionNames.en;
+            
+            resultsGrid.innerHTML = results.map(result => `
+                <div class="emotion-card">
+                    <div class="emotion-header">
+                        <span class="emotion-icon">${result.icon}</span>
+                        <span>${translatedEmotions[result.name] || result.name}</span>
+                    </div>
+                    <div class="confidence-bar">
+                        <div class="confidence-level" style="width: ${result.confidence}%"></div>
+                    </div>
+                    <div>${result.confidence.toFixed(1)}%</div>
+                </div>
+            `).join('');
+        }
+
+        function clearText() {
+            document.getElementById('textInput').value = '';
+            document.getElementById('resultsGrid').innerHTML = '';
+            document.getElementById('detectedLanguage').textContent = '';
+            updateChart(emotions.map(() => ({ confidence: 0 })));
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initChart();
+            updatePlaceholder();
+        });
+    </script>
+</body>
+</html>

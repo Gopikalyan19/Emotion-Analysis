@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Emotion Analyzer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Arial', sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #f0f2f5;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 600px;
+            padding: 2rem;
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #1a1a1a;
+            margin-bottom: 2rem;
+            font-size: 1.8rem;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        button {
+            padding: 0.8rem 1.5rem;
+            border: none;
+            border-radius: 0.5rem;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .status {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: #666;
+        }
+
+        .visualization {
+            width: 100%;
+            height: 150px;
+            background: #f8f9fa;
+            border-radius: 0.5rem;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .wave {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .emotion-display {
+            text-align: center;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            background: #f8f9fa;
+            margin-bottom: 1rem;
+        }
+
+        .emotion {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #1a1a1a;
+        }
+
+        .confidence {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 0.5rem;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            button {
+                padding: 0.6rem 1rem;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+    <style>
+        .back-button {
+           position: fixed;
+           top: 1.5rem;
+           left: 1.5rem;
+           background: white;
+           border: none;
+           padding: 0.5rem 1rem;
+           border-radius: 20px;
+           cursor: pointer;
+           display: flex;
+           align-items: center;
+           gap: 0.5rem;
+           box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+           transition: transform 0.2s, box-shadow 0.2s;
+           font-size: 0.9rem;
+           color: var(--text-dark);
+           z-index: 100;
+       }
+
+       .back-button:hover {
+           transform: translateY(-2px);
+           box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+       }
+
+       .back-arrow {
+           font-size: 1.2rem;
+       }
+       @media (max-width: 768px) {
+           .back-button {
+               top: 1rem;
+               left: 1rem;
+               padding: 0.4rem 0.8rem;
+               font-size: 0.8rem;
+           }
+       }
+   </style>
+</head>
+<body>
+    <a href="index.html" style="text-decoration: none;" class="back-button">
+        <span class="back-arrow">←</span>
+        Back
+    </a>
+    <br> <br>
+    <div class="container">
+        <h1>Voice Emotion Analyzer</h1>
+        
+        <div class="controls">
+            <button id="startBtn">Start Recording</button>
+            <button id="stopBtn" disabled>Stop Recording</button>
+        </div>
+
+        <div class="status" id="status">
+            Click 'Start Recording' to begin analysis
+        </div>
+
+        <div class="visualization">
+            <canvas id="waveform" class="wave"></canvas>
+        </div>
+
+        <div class="emotion-display">
+            <div class="emotion" id="emotion">Neutral</div>
+            <div class="confidence" id="confidence">Confidence: 0%</div>
+        </div>
+    </div>
+
+    <script>
+        let audioContext;
+        let analyser;
+        let microphone;
+        let animationId;
+        const canvas = document.getElementById('waveform');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusEl = document.getElementById('status');
+        const emotionEl = document.getElementById('emotion');
+        const confidenceEl = document.getElementById('confidence');
+
+        // Set canvas size
+        function resizeCanvas() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        }
+        
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Initialize audio context
+        async function initAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+
+                startVisualization();
+                startEmotionDetection();
+
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                statusEl.textContent = 'Recording and analyzing...';
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                statusEl.textContent = 'Error: Could not access microphone';
+            }
+        }
+
+        // Visualize audio waveform
+        function startVisualization() {
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            function draw() {
+                animationId = requestAnimationFrame(draw);
+                analyser.getByteTimeDomainData(dataArray);
+
+                ctx.fillStyle = '#f8f9fa';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#007bff';
+                ctx.beginPath();
+
+                const sliceWidth = canvas.width / bufferLength;
+                let x = 0;
+
+                for (let i = 0; i < bufferLength; i++) {
+                    const v = dataArray[i] / 128.0;
+                    const y = (v * canvas.height) / 2;
+
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+
+                    x += sliceWidth;
+                }
+
+                ctx.lineTo(canvas.width, canvas.height / 2);
+                ctx.stroke();
+            }
+
+            draw();
+        }
+
+        // Simulate emotion detection
+        function startEmotionDetection() {
+            const emotions = ['Happy', 'Sad', 'Angry', 'Fearful', 'Surprised', 'Neutral'];
+            
+            function updateEmotion() {
+                // Simulate processing delay
+                setTimeout(() => {
+                    const randomEmotion = emotions[Math.floor(Math.random() * emotions.length)];
+                    const confidence = Math.floor(Math.random() * 30) + 70; // Random confidence between 70-100%
+                    
+                    emotionEl.textContent = randomEmotion;
+                    confidenceEl.textContent = `Confidence: ${confidence}%`;
+                }, 300);
+            }
+
+            // Update emotion every 2 seconds
+            return setInterval(updateEmotion, 2000);
+        }
+
+        function stopRecording() {
+            if (microphone) {
+                microphone.disconnect();
+                cancelAnimationFrame(animationId);
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                statusEl.textContent = 'Recording stopped';
+                
+                // Clear canvas
+                ctx.fillStyle = '#f8f9fa';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Reset emotion display
+                emotionEl.textContent = 'Neutral';
+                confidenceEl.textContent = 'Confidence: 0%';
+            }
+        }
+
+        startBtn.addEventListener('click', initAudio);
+        stopBtn.addEventListener('click', stopRecording);
+    </script>
+</body>
+</html>
