@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Emotion Analyzer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.2.0/tf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/meyda/5.6.1/meyda.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --primary-light: #93c5fd;
+            --danger: #ef4444;
+            --success: #22c55e;
+            --background: #f8fafc;
+            --card: #ffffff;
+            --text: #1f2937;
+            --text-light: #6b7280;
+            --border: #e5e7eb;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: var(--background);
+            color: var(--text);
+            line-height: 1.5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+            width: 100%;
+        }
+
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            padding: 2rem;
+        }
+
+        h1 {
+            font-size: clamp(1.5rem, 5vw, 2rem);
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        @media (max-width: 480px) {
+            .controls {
+                flex-direction: column;
+            }
+        }
+
+        button {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            background: var(--primary);
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 1rem;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            min-height: 48px;
+        }
+
+        button:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            background: var(--primary-light);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            text-align: center;
+            padding: 1rem;
+            border-radius: 8px;
+            background: var(--background);
+            margin-bottom: 1.5rem;
+        }
+
+        .visualizer-container {
+            position: relative;
+            width: 100%;
+            padding-top: 40%;
+            margin-bottom: 1.5rem;
+            border-radius: 8px;
+            overflow: hidden;
+            background: var(--background);
+        }
+
+        .visualizer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .results {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .emotion-card {
+            background: var(--background);
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+
+        .emotion-card.active {
+            background: var(--primary);
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .emotion-label {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .emotion-value {
+            font-size: 1.25rem;
+            font-weight: bold;
+        }
+
+        .error {
+            background: #fef2f2;
+            color: var(--danger);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .confidence-bar {
+            height: 4px;
+            background: var(--primary-light);
+            border-radius: 2px;
+            margin-top: 0.5rem;
+            overflow: hidden;
+        }
+
+        .confidence-bar-fill {
+            height: 100%;
+            background: var(--primary);
+            transition: width 0.3s ease;
+        }
+
+        .recording-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--danger);
+            margin-right: 0.5rem;
+        }
+
+        .recording .recording-indicator {
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.3; }
+            100% { opacity: 1; }
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --background: #1f2937;
+                --card: #111827;
+                --text: #f9fafb;
+                --text-light: #9ca3af;
+                --border: #374151;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>Voice Emotion Analyzer</h1>
+            
+            <div id="error" class="error" style="display: none;"></div>
+            
+            <div class="controls">
+                <button id="startButton" disabled>
+                    <span class="recording-indicator"></span>
+                    Start Recording
+                </button>
+                <button id="stopButton" disabled>Stop Recording</button>
+            </div>
+            
+            <div class="status" id="status">
+                Loading model...
+            </div>
+            
+            <div class="visualizer-container">
+                <canvas id="visualizer" class="visualizer"></canvas>
+            </div>
+            
+            <div class="results">
+                <div class="emotion-card" data-emotion="angry">
+                    <div class="emotion-label">Angry</div>
+                    <div class="emotion-value">0%</div>
+                    <div class="confidence-bar">
+                        <div class="confidence-bar-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="emotion-card" data-emotion="happy">
+                    <div class="emotion-label">Happy</div>
+                    <div class="emotion-value">0%</div>
+                    <div class="confidence-bar">
+                        <div class="confidence-bar-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="emotion-card" data-emotion="neutral">
+                    <div class="emotion-label">Neutral</div>
+                    <div class="emotion-value">0%</div>
+                    <div class="confidence-bar">
+                        <div class="confidence-bar-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="emotion-card" data-emotion="sad">
+                    <div class="emotion-label">Sad</div>
+                    <div class="emotion-value">0%</div>
+                    <div class="confidence-bar">
+                        <div class="confidence-bar-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check if required libraries are loaded
+        window.addEventListener('load', function() {
+            if (typeof Meyda === 'undefined') {
+                document.getElementById('error').textContent = 'Error: Meyda library failed to load. Please check your internet connection.';
+                document.getElementById('error').style.display = 'block';
+            }
+            if (typeof tf === 'undefined') {
+                document.getElementById('error').textContent = 'Error: TensorFlow library failed to load. Please check your internet connection.';
+                document.getElementById('error').style.display = 'block';
+            }
+        });
+
+        class VoiceEmotionAnalyzer {
+            constructor() {
+                // Check if required libraries are available
+                if (typeof Meyda === 'undefined') {
+                    this.showError('Meyda library is not loaded. Please check your internet connection and refresh the page.');
+                    return;
+                }
+                if (typeof tf === 'undefined') {
+                    this.showError('TensorFlow library is not loaded. Please check your internet connection and refresh the page.');
+                    return;
+                }
+
+                this.audioContext = null;
+                this.mediaRecorder = null;
+                this.stream = null;
+                this.isRecording = false;
+                this.meydaAnalyzer = null;
+                this.model = null;
+                this.featureBuffer = [];
+                this.BUFFER_SIZE = 5;
+                
+                this.SAMPLE_RATE = 16000;
+                
+                this.startButton = document.getElementById('startButton');
+                this.stopButton = document.getElementById('stopButton');
+                this.statusElement = document.getElementById('status');
+                this.errorElement = document.getElementById('error');
+                this.visualizer = document.getElementById('visualizer');
+                this.visualizerCtx = this.visualizer.getContext('2d');
+                
+                this.setupEventListeners();
+                this.initializeSystem();
+            }
+            
+            async initializeSystem() {
+                try {
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                        throw new Error('Your browser does not support audio recording');
+                    }
+
+                    try {
+                        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    } catch (e) {
+                        throw new Error('Could not initialize audio context: ' + e.message);
+                    }
+                    
+                    this.model = await this.loadModel();
+                    
+                    this.startButton.disabled = false;
+                    this.statusElement.textContent = 'Ready to record';
+                } catch (error) {
+                    this.showError('Error initializing system: ' + error.message);
+                }
+            }
+            
+            async loadModel() {
+                const model = tf.sequential();
+                
+                model.add(tf.layers.dense({
+                    units: 128,
+                    activation: 'relu',
+                    inputShape: [13]
+                }));
+                
+                model.add(tf.layers.dropout(0.3));
+                
+                model.add(tf.layers.dense({
+                    units: 64,
+                    activation: 'relu'
+                }));
+                
+                model.add(tf.layers.dropout(0.2));
+                
+                model.add(tf.layers.dense({
+                    units: 32,
+                    activation: 'relu'
+                }));
+                
+                model.add(tf.layers.dense({
+                    units: 4,
+                    activation: 'softmax'
+                }));
+                
+                model.compile({
+                    optimizer: tf.train.adam(0.0001),
+                    loss: 'categoricalCrossentropy',
+                    metrics: ['accuracy']
+                });
+                
+                return model;
+            }
+            
+            normalizeFeatures(features) {
+                const mean = tf.mean(features);
+                const std = tf.std(features);
+                return tf.sub(features, mean).div(std);
+            }
+            
+            setupEventListeners() {
+                this.startButton.addEventListener('click', () => this.startRecording());
+                this.stopButton.addEventListener('click', () => this.stopRecording());
+                window.addEventListener('resize', () => this.resizeVisualizer());
+                this.resizeVisualizer();
+            }
+            
+            async startRecording() {
+                try {
+                    this.stream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        }
+                    });
+                    
+                    const source = this.audioContext.createMediaStreamSource(this.stream);
+                    
+                    this.meydaAnalyzer = Meyda.createMeydaAnalyzer({
+                        audioContext: this.audioContext,
+                        source: source,
+                        bufferSize: 1024,
+                        featureExtractors: ['mfcc', 'rms', 'zcr', 'spectralCentroid'],
+                        callback: (features) => this.processAudioFeatures(features)
+                    });
+                    
+                    const analyser = this.audioContext.createAnalyser();
+                    source.connect(analyser);
+                    this.startVisualization(analyser);
+                    
+                    this.meydaAnalyzer.start();
+                    this.isRecording = true;
+                    this.startButton.disabled = true;
+                    this.stopButton.disabled = false;
+                    this.statusElement.textContent = 'Recording...';
+                    document.body.classList.add('recording');
+                    
+                } catch (error) {
+                    this.showError('Error accessing microphone: ' + error.message);
+                }
+            }
+            
+            stopRecording() {
+                if (this.isRecording) {
+                    this.meydaAnalyzer.stop();
+                    this.stream.getTracks().forEach(track => track.stop());
+                    this.isRecording = false;
+                    this.startButton.disabled = false;
+                    this.stopButton.disabled = true;
+                    this.statusElement.textContent = 'Recording stopped';
+                    document.body.classList.remove('recording');
+                    this.featureBuffer = [];
+                }
+            }
+            
+            async processAudioFeatures(features) {
+                if (!features || !features.mfcc) return;
+                
+                this.featureBuffer.push(features.mfcc);
+                
+                if (this.featureBuffer.length >= this.BUFFER_SIZE) {
+                    const averagedFeatures = this.featureBuffer.reduce((acc, curr) => {
+                        return acc.map((val, i) => val + curr[i]);
+                    }, new Array(13).fill(0)).map(val => val / this.BUFFER_SIZE);
+                    
+                    const inputTensor = tf.tensor2d([averagedFeatures]);
+                    const normalizedInput = this.normalizeFeatures(inputTensor);
+                    
+                    const prediction = await this.model.predict(normalizedInput).data();
+                    const maxConfidence = Math.max(...prediction);
+                    
+                    if (maxConfidence > 0.4) {
+                        const emotions = ['angry', 'happy', 'neutral', 'sad'];
+                        
+                        // Update UI for each emotion
+                        emotions.forEach((emotion, index) => {
+                            const confidence = prediction[index] * 100;
+                            const card = document.querySelector(`.emotion-card[data-emotion="${emotion}"]`);
+                            const valueElement = card.querySelector('.emotion-value');
+                            const barElement = card.querySelector('.confidence-bar-fill');
+                            
+                            valueElement.textContent = `${confidence.toFixed(1)}%`;
+                            barElement.style.width = `${confidence}%`;
+                            
+                            // Add/remove active class based on highest confidence
+                            if (prediction[index] === maxConfidence) {
+                                card.classList.add('active');
+                            } else {
+                                card.classList.remove('active');
+                            }
+                        });
+                    }
+                    
+                    this.featureBuffer = [];
+                }
+            }
+            
+            startVisualization(analyser) {
+                analyser.fftSize = 2048;
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                
+                const draw = () => {
+                    if (!this.isRecording) return;
+                    
+                    requestAnimationFrame(draw);
+                    analyser.getByteTimeDomainData(dataArray);
+                    
+                    this.visualizerCtx.fillStyle = 'rgb(31, 41, 55)';
+                    this.visualizerCtx.fillRect(0, 0, this.visualizer.width, this.visualizer.height);
+                    
+                    this.visualizerCtx.lineWidth = 2;
+                    this.visualizerCtx.strokeStyle = 'rgb(37, 99, 235)';
+                    this.visualizerCtx.beginPath();
+                    
+                    const sliceWidth = this.visualizer.width * 1.0 / bufferLength;
+                    let x = 0;
+                    
+                    for (let i = 0; i < bufferLength; i++) {
+                        const v = dataArray[i] / 128.0;
+                        const y = v * this.visualizer.height / 2;
+                        
+                        if (i === 0) {
+                            this.visualizerCtx.moveTo(x, y);
+                        } else {
+                            this.visualizerCtx.lineTo(x, y);
+                        }
+                        
+                        x += sliceWidth;
+                    }
+                    
+                    this.visualizerCtx.lineTo(this.visualizer.width, this.visualizer.height / 2);
+                    this.visualizerCtx.stroke();
+                };
+                
+                draw();
+            }
+            
+            resizeVisualizer() {
+                const container = this.visualizer.parentElement;
+                this.visualizer.width = container.offsetWidth;
+                this.visualizer.height = container.offsetHeight;
+            }
+            
+            showError(message) {
+                this.errorElement.textContent = message;
+                this.errorElement.style.display = 'block';
+                this.startButton.disabled = true;
+                this.stopButton.disabled = true;
+                this.statusElement.textContent = 'Error occurred';
+            }
+        }
+
+        // Initialize the analyzer when the page loads
+        window.addEventListener('load', () => {
+            new VoiceEmotionAnalyzer();
+        });
+    </script>
+</body>
+</html>

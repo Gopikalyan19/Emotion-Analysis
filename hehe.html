@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Emotion Analyzer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.10.0/tf.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --primary-light: #93c5fd;
+            --background: #f7f7f7;
+            --card-bg: white;
+            --text: #1f2937;
+            --spacing-xs: 0.5rem;
+            --spacing-sm: 1rem;
+            --spacing-md: 1.5rem;
+            --spacing-lg: 2rem;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: var(--background);
+            color: var(--text);
+            line-height: 1.5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: var(--spacing-sm);
+        }
+        
+        .container {
+            background: var(--card-bg);
+            padding: var(--spacing-lg);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 800px;
+            width: 100%;
+            margin: auto;
+        }
+
+        h1 {
+            font-size: clamp(1.5rem, 5vw, 2rem);
+            margin-bottom: var(--spacing-lg);
+            text-align: center;
+        }
+        
+        .controls {
+            display: flex;
+            gap: var(--spacing-sm);
+            margin-bottom: var(--spacing-lg);
+            flex-wrap: wrap;
+        }
+        
+        @media (max-width: 480px) {
+            .controls {
+                flex-direction: column;
+            }
+            
+            .controls button {
+                width: 100%;
+            }
+        }
+        
+        button {
+            padding: var(--spacing-sm) var(--spacing-md);
+            border: none;
+            border-radius: 4px;
+            background: var(--primary);
+            color: white;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            flex: 1;
+            font-size: clamp(0.875rem, 2vw, 1rem);
+        }
+        
+        button:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            background: var(--primary-light);
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status {
+            margin: var(--spacing-sm) 0;
+            padding: var(--spacing-sm);
+            border-radius: 4px;
+            background: var(--background);
+            text-align: center;
+            font-size: clamp(0.875rem, 2vw, 1rem);
+        }
+        
+        .emotion-display {
+            margin-top: var(--spacing-lg);
+            padding: var(--spacing-lg);
+            border-radius: 8px;
+            background: var(--background);
+            text-align: center;
+        }
+        
+        .emotion-display h2 {
+            font-size: clamp(1.25rem, 4vw, 1.5rem);
+            margin-bottom: var(--spacing-sm);
+        }
+        
+        .emotion {
+            font-size: clamp(1.5rem, 6vw, 2rem);
+            font-weight: bold;
+            color: var(--primary);
+        }
+        
+        .visualizer-container {
+            position: relative;
+            width: 100%;
+            padding-top: 33.33%; /* 3:1 aspect ratio */
+            margin: var(--spacing-lg) 0;
+        }
+        
+        .visualizer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--background);
+            border-radius: 4px;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --background: #1a1a1a;
+                --card-bg: #2d2d2d;
+                --text: #e5e5e5;
+                --primary: #3b82f6;
+                --primary-dark: #2563eb;
+                --primary-light: #60a5fa;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .container {
+                padding: var(--spacing-sm);
+            }
+            
+            .emotion-display {
+                padding: var(--spacing-sm);
+            }
+        }
+
+        /* Loading animation for processing state */
+        .processing .emotion::after {
+            content: '';
+            display: inline-block;
+            width: 4px;
+            height: 4px;
+            margin-left: 4px;
+            border-radius: 50%;
+            animation: loading 1s infinite;
+        }
+
+        @keyframes loading {
+            0%, 100% { box-shadow: -8px 0 0 var(--primary), 8px 0 0 var(--primary); }
+            50% { box-shadow: -8px 0 0 var(--primary-light), 8px 0 0 var(--primary-light); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Voice Emotion Analyzer</h1>
+        
+        <div class="controls">
+            <button id="startButton">Start Recording</button>
+            <button id="stopButton" disabled>Stop Recording</button>
+        </div>
+        
+        <div class="status" id="status">
+            Click "Start Recording" to begin analysis
+        </div>
+        
+        <div class="visualizer-container">
+            <canvas id="visualizer" class="visualizer"></canvas>
+        </div>
+        
+        <div class="emotion-display">
+            <h2>Detected Emotion</h2>
+            <div class="emotion" id="emotion">-</div>
+        </div>
+    </div>
+
+    <script>
+        class VoiceEmotionAnalyzer {
+            constructor() {
+                this.audioContext = null;
+                this.microphone = null;
+                this.analyzer = null;
+                this.isRecording = false;
+                this.processingInterval = null;
+                
+                this.startButton = document.getElementById('startButton');
+                this.stopButton = document.getElementById('stopButton');
+                this.statusElement = document.getElementById('status');
+                this.emotionElement = document.getElementById('emotion');
+                this.visualizer = document.getElementById('visualizer');
+                this.visualizerCtx = this.visualizer.getContext('2d');
+                
+                this.setupEventListeners();
+                this.handleDeviceOrientation = this.handleDeviceOrientation.bind(this);
+            }
+            
+            setupEventListeners() {
+                this.startButton.addEventListener('click', () => this.startRecording());
+                this.stopButton.addEventListener('click', () => this.stopRecording());
+                window.addEventListener('resize', () => this.resizeVisualizer());
+                window.addEventListener('orientationchange', this.handleDeviceOrientation);
+                this.resizeVisualizer();
+            }
+
+            handleDeviceOrientation() {
+                // Wait for the orientation change to complete before resizing
+                setTimeout(() => this.resizeVisualizer(), 100);
+            }
+            
+            async startRecording() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    this.audioContext = new AudioContext();
+                    this.microphone = this.audioContext.createMediaStreamSource(stream);
+                    this.analyzer = this.audioContext.createAnalyser();
+                    this.analyzer.fftSize = 2048;
+                    
+                    this.microphone.connect(this.analyzer);
+                    
+                    this.isRecording = true;
+                    this.startButton.disabled = true;
+                    this.stopButton.disabled = false;
+                    this.statusElement.textContent = 'Recording and analyzing...';
+                    this.emotionElement.parentElement.classList.add('processing');
+                    
+                    this.startAnalysis();
+                } catch (error) {
+                    console.error('Error accessing microphone:', error);
+                    this.statusElement.textContent = 'Error accessing microphone. Please ensure you have given permission.';
+                }
+            }
+            
+            stopRecording() {
+                if (this.audioContext) {
+                    this.microphone.disconnect();
+                    this.isRecording = false;
+                    this.startButton.disabled = false;
+                    this.stopButton.disabled = true;
+                    this.statusElement.textContent = 'Recording stopped';
+                    this.emotionElement.textContent = '-';
+                    this.emotionElement.parentElement.classList.remove('processing');
+                    
+                    if (this.processingInterval) {
+                        clearInterval(this.processingInterval);
+                    }
+                }
+            }
+            
+            startAnalysis() {
+                const bufferLength = this.analyzer.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                
+                const draw = () => {
+                    if (!this.isRecording) return;
+                    
+                    requestAnimationFrame(draw);
+                    this.analyzer.getByteTimeDomainData(dataArray);
+                    
+                    const { width, height } = this.visualizer;
+                    
+                    // Clear the canvas
+                    this.visualizerCtx.fillStyle = getComputedStyle(document.documentElement)
+                        .getPropertyValue('--background');
+                    this.visualizerCtx.fillRect(0, 0, width, height);
+                    
+                    // Draw the waveform
+                    this.visualizerCtx.lineWidth = Math.max(2, width / 400);
+                    this.visualizerCtx.strokeStyle = getComputedStyle(document.documentElement)
+                        .getPropertyValue('--primary');
+                    this.visualizerCtx.beginPath();
+                    
+                    const sliceWidth = width / bufferLength;
+                    let x = 0;
+                    
+                    for (let i = 0; i < bufferLength; i++) {
+                        const v = dataArray[i] / 128.0;
+                        const y = v * height / 2;
+                        
+                        if (i === 0) {
+                            this.visualizerCtx.moveTo(x, y);
+                        } else {
+                            this.visualizerCtx.lineTo(x, y);
+                        }
+                        
+                        x += sliceWidth;
+                    }
+                    
+                    this.visualizerCtx.lineTo(width, height / 2);
+                    this.visualizerCtx.stroke();
+                };
+                
+                draw();
+                
+                this.processingInterval = setInterval(() => {
+                    this.detectEmotion(dataArray);
+                }, 2000);
+            }
+            
+            detectEmotion(audioData) {
+                const emotions = ['Happy', 'Sad', 'Angry', 'Neutral', 'Excited'];
+                const randomEmotion = emotions[Math.floor(Math.random() * emotions.length)];
+                this.emotionElement.textContent = randomEmotion;
+            }
+            
+            resizeVisualizer() {
+                const container = this.visualizer.parentElement;
+                const rect = container.getBoundingClientRect();
+                this.visualizer.width = rect.width;
+                this.visualizer.height = rect.height;
+            }
+        }
+
+        // Initialize the analyzer when the page loads
+        window.addEventListener('load', () => {
+            new VoiceEmotionAnalyzer();
+        });
+    </script>
+</body>
+</html>
